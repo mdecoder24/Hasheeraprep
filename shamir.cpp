@@ -2,84 +2,110 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <limits>
 
 #include "BigInt.hpp"
 
-struct Point {
-    BigInt x;
-    BigInt y;
+struct PolynomialPoint {
+    BigInt x_coordinate;
+    BigInt y_coordinate;
 };
 
-BigInt baseToDec(const std::string& value, int base) {
-    BigInt result = 0;
-    BigInt power = 1;
+class ShamirSolver {
+private:
+    std::vector<PolynomialPoint> decoded_shares;
 
-    for (int i = value.length() - 1; i >= 0; i--) {
-        int digit;
-        if (value[i] >= '0' && value[i] <= '9') {
-            digit = value[i] - '0';
-        } else if (value[i] >= 'a' && value[i] <= 'z') {
-            digit = value[i] - 'a' + 10;
-        } else {
-            throw std::invalid_argument("Invalid character in number string");
-        }
+    BigInt convertBaseToDecimal(const std::string& value_string, int base) {
+        BigInt decimal_result = 0;
+        BigInt current_power = 1;
 
-        if (digit >= base) {
-            throw std::invalid_argument("Digit exceeds base");
-        }
-        
-        result += digit * power;
-        power *= base;
-    }
-    return result;
-}
+        for (int i = value_string.length() - 1; i >= 0; i--) {
+            int digit_value;
+            char current_char = value_string[i];
 
-BigInt findSecret(const std::vector<Point>& shares) {
-    BigInt secret = 0;
-    int k = shares.size();
-
-    for (int j = 0; j < k; ++j) {
-        BigInt numerator = 1;
-        BigInt denominator = 1;
-
-        for (int i = 0; i < k; ++i) {
-            if (i == j) {
-                continue;
+            if (current_char >= '0' && current_char <= '9') {
+                digit_value = current_char - '0';
+            } else if (current_char >= 'a' && current_char <= 'z') {
+                digit_value = current_char - 'a' + 10;
+            } else {
+                throw std::invalid_argument("Invalid character detected in number string.");
             }
-            numerator *= shares[i].x;
-            denominator *= (shares[i].x - shares[j].x);
-        }
 
-        BigInt term = shares[j].y * numerator / denominator;
-        secret += term;
+            if (digit_value >= base) {
+                throw std::invalid_argument("A digit in the provided value exceeds the specified base.");
+            }
+            
+            decimal_result += digit_value * current_power;
+            current_power *= base;
+        }
+        return decimal_result;
     }
 
-    return secret;
-}
+public:
+    void addShare(const BigInt& x_value, const std::string& y_value_string, int y_base) {
+        PolynomialPoint new_point;
+        new_point.x_coordinate = x_value;
+        new_point.y_coordinate = convertBaseToDecimal(y_value_string, y_base);
+        this->decoded_shares.push_back(new_point);
+    }
+
+    BigInt solveForSecret() {
+        BigInt final_secret = 0;
+        int total_shares = this->decoded_shares.size();
+
+        if (total_shares == 0) {
+            std::cerr << "Warning: No shares provided to solve for the secret." << std::endl;
+            return 0;
+        }
+
+        for (int j = 0; j < total_shares; ++j) {
+            BigInt lagrange_numerator = 1;
+            BigInt lagrange_denominator = 1;
+
+            for (int i = 0; i < total_shares; ++i) {
+                if (i == j) {
+                    continue;
+                }
+                lagrange_numerator *= this->decoded_shares[i].x_coordinate;
+                lagrange_denominator *= (this->decoded_shares[i].x_coordinate - this->decoded_shares[j].x_coordinate);
+            }
+            
+            BigInt current_term = this->decoded_shares[j].y_coordinate * lagrange_numerator / lagrange_denominator;
+            final_secret += current_term;
+        }
+        return final_secret;
+    }
+
+    void clearShares() {
+        this->decoded_shares.clear();
+    }
+};
 
 int main() {
-    std::cout << "Solving Test Case 1..." << std::endl;
-    std::vector<Point> shares1;
-    shares1.push_back({1, baseToDec("4", 10)});
-    shares1.push_back({2, baseToDec("111", 2)});
-    shares1.push_back({3, baseToDec("12", 10)});
+    ShamirSolver solver_instance;
+
+    std::cout << "Processing Test Case 1..." << std::endl;
+    solver_instance.addShare(1, "4", 10);
+    solver_instance.addShare(2, "111", 2);
+    solver_instance.addShare(3, "12", 10);
     
-    BigInt secret1 = findSecret(shares1);
-    std::cout << "Secret for Test Case 1: " << secret1 << std::endl;
-    std::cout << "-------------------------" << std::endl;
+    BigInt secret_result_one = solver_instance.solveForSecret();
+    std::cout << "Reconstructed Secret for Test Case 1: " << secret_result_one << std::endl;
+    std::cout << "------------------------------------------" << std::endl;
 
-    std::cout << "Solving Test Case 2..." << std::endl;
-    std::vector<Point> shares2;
-    shares2.push_back({1, baseToDec("13444211440455345511", 6)});
-    shares2.push_back({2, baseToDec("aed7015a346d635", 15)});
-    shares2.push_back({3, baseToDec("6aeeb69631c227c", 15)});
-    shares2.push_back({4, baseToDec("e1b5e05623d881f", 16)});
-    shares2.push_back({5, baseToDec("316034514573652620673", 8)});
-    shares2.push_back({6, baseToDec("2122212201122002221120200210011020220200", 3)});
-    shares2.push_back({7, baseToDec("20120221122211000100210021102001201112121", 3)});
+    solver_instance.clearShares();
 
-    BigInt secret2 = findSecret(shares2);
-    std::cout << "Secret for Test Case 2: " << secret2 << std::endl;
+    std::cout << "Processing Test Case 2..." << std::endl;
+    solver_instance.addShare(1, "13444211440455345511", 6);
+    solver_instance.addShare(2, "aed7015a346d635", 15);
+    solver_instance.addShare(3, "6aeeb69631c227c", 15);
+    solver_instance.addShare(4, "e1b5e05623d881f", 16);
+    solver_instance.addShare(5, "316034514573652620673", 8);
+    solver_instance.addShare(6, "2122212201122002221120200210011020220200", 3);
+    solver_instance.addShare(7, "20120221122211000100210021102001201112121", 3);
+
+    BigInt secret_result_two = solver_instance.solveForSecret();
+    std::cout << "Reconstructed Secret for Test Case 2: " << secret_result_two << std::endl;
 
     return 0;
 }
